@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: project-hub
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_DEBUG=True
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+      - JIRA_URL=${JIRA_URL}
+      - JIRA_EMAIL=${JIRA_EMAIL}
+      - JIRA_API_TOKEN=${JIRA_API_TOKEN}
+      - DATABASE_URL=sqlite:///instance/project_hub.db
+    volumes:
+      # Mount the instance directory for persistent database
+      - ./instance:/app/instance
+      # Mount app code for development (comment out for production)
+      - ./app.py:/app/app.py
+      - ./config.py:/app/config.py
+      - ./jira_client.py:/app/jira_client.py
+      - ./models.py:/app/models.py
+      - ./db_helpers.py:/app/db_helpers.py
+      - ./templates:/app/templates
+      - ./static:/app/static
+    restart: unless-stopped
+    networks:
+      - project-hub-network
+
+networks:
+  project-hub-network:
+    driver: bridge
