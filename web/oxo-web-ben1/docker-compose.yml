@@ -14,9 +14,7 @@ services:
       - JIRA_API_TOKEN=${JIRA_API_TOKEN}
       - DATABASE_URL=sqlite:///instance/project_hub.db
     volumes:
-      # Mount the instance directory for persistent database
       - ./instance:/app/instance
-      # Mount app code for development (comment out for production)
       - ./app.py:/app/app.py
       - ./config.py:/app/config.py
       - ./jira_client.py:/app/jira_client.py
