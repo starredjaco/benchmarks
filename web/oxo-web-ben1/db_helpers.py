@@ -1,6 +1,7 @@
 """
 Database helper functions for caching Jira data
 """
+
 import models
 from datetime import datetime
 import json
@@ -20,8 +21,8 @@ def cache_project(project_data):
         Project: The cached project object
     """
     try:
-        project_key = project_data.get('key')
-        if project_key is None or project_key == '':
+        project_key = project_data.get("key")
+        if project_key is None or project_key == "":
             logger.warning("Project data missing 'key' field")
             return None
 
@@ -30,10 +31,12 @@ def cache_project(project_data):
 
         if project is not None:
             # Update existing project
-            project.name = project_data.get('name', project.name)
-            project.description = project_data.get('description', project.description)
-            project.lead = project_data.get('lead', {}).get('displayName', project.lead)
-            project.project_type = project_data.get('projectTypeKey', project.project_type)
+            project.name = project_data.get("name", project.name)
+            project.description = project_data.get("description", project.description)
+            project.lead = project_data.get("lead", {}).get("displayName", project.lead)
+            project.project_type = project_data.get(
+                "projectTypeKey", project.project_type
+            )
             project.cached_at = datetime.utcnow()
             project.raw_data = json.dumps(project_data)
             logger.info(f"Updated project cache: {project_key}")
@@ -41,11 +44,11 @@ def cache_project(project_data):
             # Create new project
             project = models.Project(
                 project_key=project_key,
-                name=project_data.get('name', ''),
-                description=project_data.get('description', ''),
-                lead=project_data.get('lead', {}).get('displayName', ''),
-                project_type=project_data.get('projectTypeKey', ''),
-                raw_data=json.dumps(project_data)
+                name=project_data.get("name", ""),
+                description=project_data.get("description", ""),
+                lead=project_data.get("lead", {}).get("displayName", ""),
+                project_type=project_data.get("projectTypeKey", ""),
+                raw_data=json.dumps(project_data),
             )
             models.db.session.add(project)
             logger.info(f"Created project cache: {project_key}")
@@ -70,12 +73,12 @@ def cache_issue(issue_data):
         CachedIssue: The cached issue object
     """
     try:
-        issue_key = issue_data.get('key')
-        if issue_key is None or issue_key == '':
+        issue_key = issue_data.get("key")
+        if issue_key is None or issue_key == "":
             logger.warning("Issue data missing 'key' field")
             return None
 
-        fields = issue_data.get('fields', {})
+        fields = issue_data.get("fields", {})
 
         # Check if issue already exists
         issue = models.CachedIssue.query.filter_by(issue_key=issue_key).first()
@@ -84,36 +87,40 @@ def cache_issue(issue_data):
         created_date = None
         updated_date = None
         try:
-            created_value = fields.get('created')
-            updated_value = fields.get('updated')
-            if created_value is not None and created_value != '':
-                created_date = datetime.fromisoformat(created_value.replace('Z', '+00:00'))
-            if updated_value is not None and updated_value != '':
-                updated_date = datetime.fromisoformat(updated_value.replace('Z', '+00:00'))
+            created_value = fields.get("created")
+            updated_value = fields.get("updated")
+            if created_value is not None and created_value != "":
+                created_date = datetime.fromisoformat(
+                    created_value.replace("Z", "+00:00")
+                )
+            if updated_value is not None and updated_value != "":
+                updated_date = datetime.fromisoformat(
+                    updated_value.replace("Z", "+00:00")
+                )
         except Exception as e:
             logger.warning(f"Error parsing dates for {issue_key}: {e}")
 
         # Derive project key, fall back to key prefix if Jira omits project field
-        project_key = fields.get('project', {}).get('key')
-        if (project_key is None or project_key == '') and '-' in issue_key:
-            project_key = issue_key.split('-', 1)[0]
+        project_key = fields.get("project", {}).get("key")
+        if (project_key is None or project_key == "") and "-" in issue_key:
+            project_key = issue_key.split("-", 1)[0]
 
         if issue is not None:
             # Update existing issue
             issue.project_key = project_key or issue.project_key
-            issue.summary = fields.get('summary', issue.summary)
-            issue.description = fields.get('description', issue.description)
-            issue.status = fields.get('status', {}).get('name', issue.status)
-            issue.priority = fields.get('priority', {}).get('name', issue.priority)
-            issue.issue_type = fields.get('issuetype', {}).get('name', issue.issue_type)
-            assignee_data = fields.get('assignee')
+            issue.summary = fields.get("summary", issue.summary)
+            issue.description = fields.get("description", issue.description)
+            issue.status = fields.get("status", {}).get("name", issue.status)
+            issue.priority = fields.get("priority", {}).get("name", issue.priority)
+            issue.issue_type = fields.get("issuetype", {}).get("name", issue.issue_type)
+            assignee_data = fields.get("assignee")
             if assignee_data is not None:
-                issue.assignee = assignee_data.get('displayName')
+                issue.assignee = assignee_data.get("displayName")
             else:
                 issue.assignee = None
-            reporter_data = fields.get('reporter')
+            reporter_data = fields.get("reporter")
             if reporter_data is not None:
-                issue.reporter = reporter_data.get('displayName')
+                issue.reporter = reporter_data.get("displayName")
             else:
                 issue.reporter = None
             issue.created_date = created_date or issue.created_date
@@ -123,29 +130,29 @@ def cache_issue(issue_data):
             logger.info(f"Updated issue cache: {issue_key}")
         else:
             # Create new issue
-            assignee_data = fields.get('assignee')
+            assignee_data = fields.get("assignee")
             if assignee_data is not None:
-                assignee_value = assignee_data.get('displayName')
+                assignee_value = assignee_data.get("displayName")
             else:
                 assignee_value = None
-            reporter_data = fields.get('reporter')
+            reporter_data = fields.get("reporter")
             if reporter_data is not None:
-                reporter_value = reporter_data.get('displayName')
+                reporter_value = reporter_data.get("displayName")
             else:
                 reporter_value = None
             issue = models.CachedIssue(
                 issue_key=issue_key,
-                project_key=project_key or '',
-                summary=fields.get('summary', ''),
-                description=fields.get('description', ''),
-                status=fields.get('status', {}).get('name', ''),
-                priority=fields.get('priority', {}).get('name', ''),
-                issue_type=fields.get('issuetype', {}).get('name', ''),
+                project_key=project_key or "",
+                summary=fields.get("summary", ""),
+                description=fields.get("description", ""),
+                status=fields.get("status", {}).get("name", ""),
+                priority=fields.get("priority", {}).get("name", ""),
+                issue_type=fields.get("issuetype", {}).get("name", ""),
                 assignee=assignee_value,
                 reporter=reporter_value,
                 created_date=created_date,
                 updated_date=updated_date,
-                raw_data=json.dumps(issue_data)
+                raw_data=json.dumps(issue_data),
             )
             models.db.session.add(issue)
             logger.info(f"Created issue cache: {issue_key}")
@@ -217,7 +224,7 @@ def get_cached_issues(project_key=None, limit=50):
     """
     query = models.CachedIssue.query
 
-    if project_key is not None and project_key != '':
+    if project_key is not None and project_key != "":
         query = query.filter_by(project_key=project_key)
 
     return query.order_by(models.CachedIssue.updated_date.desc()).limit(limit).all()
@@ -235,16 +242,23 @@ def clear_old_cache(days=7):
     """
     try:
         from datetime import timedelta
+
         cutoff_date = datetime.utcnow() - timedelta(days=days)
 
         # Delete old projects
-        project_count = models.Project.query.filter(models.Project.cached_at < cutoff_date).delete()
+        project_count = models.Project.query.filter(
+            models.Project.cached_at < cutoff_date
+        ).delete()
 
         # Delete old issues
-        issue_count = models.CachedIssue.query.filter(models.CachedIssue.cached_at < cutoff_date).delete()
+        issue_count = models.CachedIssue.query.filter(
+            models.CachedIssue.cached_at < cutoff_date
+        ).delete()
 
         models.db.session.commit()
-        logger.info(f"Cleared {project_count} projects and {issue_count} issues from cache")
+        logger.info(
+            f"Cleared {project_count} projects and {issue_count} issues from cache"
+        )
 
         return project_count + issue_count
 

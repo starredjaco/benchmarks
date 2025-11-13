@@ -25,10 +25,12 @@ class JiraClient:
         self.auth = requests.auth.HTTPBasicAuth(email, api_token)
         self.headers = {
             "Accept": "application/json",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
-    def _make_request(self, method, endpoint, params=None, json_data=None, api_version="3"):
+    def _make_request(
+        self, method, endpoint, params=None, json_data=None, api_version="3"
+    ):
         """
         Make an HTTP request to Jira API
 
@@ -55,20 +57,24 @@ class JiraClient:
                 auth=self.auth,
                 params=params,
                 json=json_data,
-                timeout=30
+                timeout=30,
             )
 
             response.raise_for_status()
 
             # Handle empty responses
-            if response.status_code == 204 or response.content is None or len(response.content) == 0:
+            if (
+                response.status_code == 204
+                or response.content is None
+                or len(response.content) == 0
+            ):
                 return {"success": True}
 
             return response.json()
 
         except requests.exceptions.HTTPError as e:
             logger.error(f"HTTP Error: {e}")
-            error_text = e.response.text if e.response is not None else 'No response'
+            error_text = e.response.text if e.response is not None else "No response"
             logger.error(f"Response: {error_text}")
             status_code = e.response.status_code if e.response is not None else None
             return {"error": str(e), "status_code": status_code, "details": error_text}
@@ -93,7 +99,7 @@ class JiraClient:
                 "success": True,
                 "message": "Connected to Jira successfully!",
                 "user": result.get("displayName", "Unknown"),
-                "email": result.get("emailAddress", "Unknown")
+                "email": result.get("emailAddress", "Unknown"),
             }
         else:
             error_message = "Unknown error"
@@ -102,7 +108,7 @@ class JiraClient:
             return {
                 "success": False,
                 "message": "Failed to connect to Jira",
-                "error": error_message
+                "error": error_message,
             }
 
     def get_projects(self):
@@ -143,7 +149,7 @@ class JiraClient:
             list: List of boards
         """
         params = {}
-        if project_key is not None and project_key != '':
+        if project_key is not None and project_key != "":
             params["projectKeyOrId"] = project_key
 
         result = self._make_request("GET", "board", params=params, api_version="agile")
@@ -166,13 +172,15 @@ class JiraClient:
             dict: Issues and metadata
         """
         params = {"maxResults": max_results}
-        result = self._make_request("GET", f"board/{board_id}/issue", params=params, api_version="agile")
+        result = self._make_request(
+            "GET", f"board/{board_id}/issue", params=params, api_version="agile"
+        )
 
         if result is not None and "error" not in result:
             return {
                 "total": result.get("total", 0),
                 "issues": result.get("issues", []),
-                "max_results": result.get("maxResults", max_results)
+                "max_results": result.get("maxResults", max_results),
             }
         else:
             logger.error(f"Error fetching board issues: {result}")
@@ -194,28 +202,30 @@ class JiraClient:
             dict: Issues and metadata
         """
         # If using Agile API (no custom JQL specified)
-        if jql is None or jql == '':
-            if project_key is not None and project_key != '':
+        if jql is None or jql == "":
+            if project_key is not None and project_key != "":
                 boards = self.get_boards(project_key=project_key)
             else:
                 boards = self.get_boards()
 
             if boards is not None and len(boards) > 0:
                 # If no project specified, get issues from all boards
-                if project_key is None or project_key == '':
+                if project_key is None or project_key == "":
                     all_issues = []
                     total = 0
                     for board in boards:
                         board_id = board.get("id")
                         logger.info(f"Fetching issues from board {board_id}")
-                        board_issues = self.get_board_issues(board_id, max_results=max_results)
+                        board_issues = self.get_board_issues(
+                            board_id, max_results=max_results
+                        )
                         all_issues.extend(board_issues.get("issues", []))
                         total += board_issues.get("total", 0)
 
                     return {
                         "total": total,
                         "issues": all_issues[:max_results],  # Limit to max_results
-                        "max_results": max_results
+                        "max_results": max_results,
                     }
                 else:
                     # Use the first board found for this project
@@ -224,10 +234,10 @@ class JiraClient:
                     return self.get_board_issues(board_id, max_results=max_results)
 
         # Fallback to JQL search (for custom JQL queries)
-        if jql is not None and jql != '':
+        if jql is not None and jql != "":
             # Use custom JQL
             search_jql = jql
-        elif project_key is not None and project_key != '':
+        elif project_key is not None and project_key != "":
             # Filter by project
             search_jql = f"project = {project_key} ORDER BY created DESC"
         else:
@@ -261,7 +271,7 @@ class JiraClient:
             return {
                 "total": result.get("total", 0),
                 "issues": issues,
-                "max_results": result.get("maxResults", max_results)
+                "max_results": result.get("maxResults", max_results),
             }
         else:
             logger.error(f"Error fetching issues: {result}")
@@ -364,9 +374,7 @@ class JiraClient:
         Returns:
             list: List of users
         """
-        params = {
-            "project": project_key
-        }
+        params = {"project": project_key}
 
         result = self._make_request("GET", "user/assignable/search", params=params)
 
@@ -398,14 +406,12 @@ class JiraClient:
             tuple: (content_bytes, content_type) or (None, None) on error
         """
         try:
-            response = requests.get(
-                content_url,
-                auth=self.auth,
-                timeout=30
-            )
+            response = requests.get(content_url, auth=self.auth, timeout=30)
             response.raise_for_status()
 
-            content_type = response.headers.get('Content-Type', 'application/octet-stream')
+            content_type = response.headers.get(
+                "Content-Type", "application/octet-stream"
+            )
             return response.content, content_type
         except Exception as e:
             logger.error(f"Error downloading attachment: {e}")
