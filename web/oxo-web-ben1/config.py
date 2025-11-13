@@ -13,7 +13,13 @@ class Config:
     DEBUG = os.getenv('FLASK_DEBUG', 'True').lower() == 'true'
 
     # Database Configuration
-    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'sqlite:///project_hub.db')
+    db_path = os.getenv('DATABASE_URL', 'sqlite:///instance/project_hub.db')
+    # Handle absolute vs relative paths
+    if db_path.startswith('sqlite:///') and not db_path.startswith('sqlite:////'):
+        # Relative path - ensure instance directory exists
+        instance_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
+        os.makedirs(instance_dir, exist_ok=True)
+    SQLALCHEMY_DATABASE_URI = db_path
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ECHO = DEBUG  # Log SQL queries in debug mode
 

@@ -25,8 +25,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create instance directory for database
-RUN mkdir -p instance
+# Create instance directory for database with proper permissions
+RUN mkdir -p /app/instance && chmod 777 /app/instance
 
 # Expose port
 EXPOSE 5000
@@ -34,8 +34,5 @@ EXPOSE 5000
 # Set environment variables for Flask
 ENV FLASK_APP=app.py
 
-# Initialize database and run migrations
-RUN flask db upgrade || echo "Database already initialized"
-
-# Run the application
-CMD ["python", "app.py"]
+# Run the application with migrations
+CMD ["sh", "-c", "flask db upgrade && python app.py"]

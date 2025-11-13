@@ -174,3 +174,36 @@ class SavedSearch(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
+
+
+class JiraConfiguration(db.Model):
+    """Store Jira connection configuration"""
+    __tablename__ = 'jira_configurations'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)  # Friendly name for this config
+    jira_url = db.Column(db.String(500), nullable=False)  # e.g., 'company.atlassian.net'
+    email = db.Column(db.String(200), nullable=False)  # User email for authentication
+    api_token = db.Column(db.Text, nullable=False)  # API token (should be encrypted in production)
+    project_key = db.Column(db.String(50))  # Default project key
+    is_active = db.Column(db.Boolean, default=False)  # Only one config can be active at a time
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    def __repr__(self):
+        return f'<JiraConfiguration {self.name}>'
+
+    def to_dict(self, include_token=False):
+        result = {
+            'id': self.id,
+            'name': self.name,
+            'jira_url': self.jira_url,
+            'email': self.email,
+            'project_key': self.project_key,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+        if include_token:
+            result['api_token'] = self.api_token
+        return result
