@@ -5,10 +5,15 @@ db = SQLAlchemy()
 
 
 class SAMLConfig(db.Model):
-    """SAML Configuration Model"""
+    """SAML Configuration Model - Supports Multiple IdPs"""
     __tablename__ = 'saml_config'
 
     id = db.Column(db.Integer, primary_key=True)
+
+    # Organization/Tenant identifier - each IdP is tied to an organization
+    organization = db.Column(db.String(200), unique=True, nullable=False, default='default')
+    organization_display_name = db.Column(db.String(200))
+
     # State flags
     enabled = db.Column(db.Boolean, default=False, nullable=False)
     configured = db.Column(db.Boolean, default=False, nullable=False)
@@ -120,16 +125,26 @@ class SAMLConfig(db.Model):
 
     @staticmethod
     def get_or_create():
-        """Get existing config or create a new one"""
+        """Get existing config or create a new one (backwards compatibility)"""
         config = SAMLConfig.query.first()
         if not config:
-            config = SAMLConfig()
+            config = SAMLConfig(organization='default')
             db.session.add(config)
             db.session.commit()
         return config
 
+    @staticmethod
+    def get_by_organization(organization):
+        """Get SAML config for a specific organization"""
+        return SAMLConfig.query.filter_by(organization=organization).first()
+
+    @staticmethod
+    def get_all_enabled():
+        """Get all enabled SAML configurations"""
+        return SAMLConfig.query.filter_by(enabled=True).all()
+
     def __repr__(self):
-        return f'<SAMLConfig enabled={self.enabled} configured={self.configured}>'
+        return f'<SAMLConfig org={self.organization} enabled={self.enabled} configured={self.configured}>'
 
 
 class Todo(db.Model):
@@ -138,6 +153,7 @@ class Todo(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(200), nullable=False)
+    organization = db.Column(db.String(200), default='default')  # Links todo to organization
     title = db.Column(db.String(500), nullable=False)
     completed = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -148,6 +164,7 @@ class Todo(db.Model):
         return {
             'id': self.id,
             'username': self.username,
+            'organization': self.organization,
             'title': self.title,
             'completed': self.completed,
             'created_at': self.created_at.isoformat(),

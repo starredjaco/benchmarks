@@ -30,14 +30,29 @@ with app.app_context():
 
 
 def is_saml_enabled():
-    """Check if SAML is enabled"""
-    config = SAMLConfig.get_or_create()
-    return config.enabled
+    """Check if SAML is enabled (checks if ANY organization has SAML enabled)"""
+    # Check if any organization has SAML enabled
+    enabled_orgs = SAMLConfig.get_all_enabled()
+    return len(enabled_orgs) > 0
 
 
-def init_saml_auth(req):
-    """Initialize SAML authentication using database config"""
-    config = SAMLConfig.get_or_create()
+def init_saml_auth(req, organization=None):
+    """Initialize SAML authentication using database config
+
+    Args:
+        req: Flask request object prepared for SAML
+        organization: Organization identifier to load specific IdP config.
+                     If None, uses default/first config (VULNERABLE!)
+    """
+    if organization:
+        config = SAMLConfig.get_by_organization(organization)
+        if not config:
+            raise ValueError(f"No SAML config found for organization: {organization}")
+    else:
+        # VULNERABLE: If no organization specified, just use first available config
+        # This allows assertion injection attacks!
+        config = SAMLConfig.get_or_create()
+
     settings_dict = config.to_settings_dict()
 
     temp_dir = tempfile.mkdtemp()
@@ -48,7 +63,7 @@ def init_saml_auth(req):
             json.dump(settings_dict, f)
 
         auth = OneLogin_Saml2_Auth(req, custom_base_path=temp_dir)
-        return auth
+        return auth, config  # Return config so we can track which org authenticated
     finally:
         if os.path.exists(settings_file):
             os.unlink(settings_file)
@@ -111,7 +126,12 @@ def login():
             session['username'] = request.form.get('username', 'Guest')
             return redirect(url_for('dashboard'))
 
-    return render_template('login.html', saml_enabled=is_saml_enabled())
+    # Get all enabled SAML organizations for multi-IdP support
+    saml_orgs = SAMLConfig.get_all_enabled() if is_saml_enabled() else []
+
+    return render_template('login.html',
+                         saml_enabled=is_saml_enabled(),
+                         saml_organizations=saml_orgs)
 
 
 @app.route('/simple-login', methods=['POST'])
@@ -126,14 +146,23 @@ def simple_login():
 
 
 @app.route('/saml/login')
-def saml_login():
-    """SAML login endpoint - redirects to IdP"""
+@app.route('/saml/login/<organization>')
+def saml_login(organization=None):
+    """SAML login endpoint - redirects to IdP
+
+    Args:
+        organization: Optional organization identifier to select specific IdP
+    """
     if not is_saml_enabled():
         return redirect(url_for('login'))
 
     try:
         req = prepare_flask_request(request)
-        auth = init_saml_auth(req)
+        auth, config = init_saml_auth(req, organization)
+
+        # Store which organization is being used for login (helps with tracking)
+        session['saml_login_organization'] = config.organization
+
         return redirect(auth.login(return_to=url_for('dashboard', _external=True)))
     except Exception as e:
         return render_template('error.html', error=f'SAML initialization failed: {str(e)}'), 500
@@ -141,11 +170,18 @@ def saml_login():
 
 @app.route('/saml/acs', methods=['POST'])
 def saml_acs():
-    """SAML Assertion Consumer Service - handles IdP response"""
-    try:
+    """SAML Assertion Consumer Service - handles IdP response
 
+    VULNERABILITY: This endpoint does NOT validate which organization/IdP sent the assertion!
+    An attacker can authenticate with their own IdP and impersonate users from other organizations.
+    """
+    try:
         req = prepare_flask_request(request)
-        auth = init_saml_auth(req)
+
+        # CRITICAL VULNERABILITY: We don't specify which organization to use!
+        # This means we just use the first/default config, but accept assertions from ANY IdP
+        # An attacker from "hacker-org" can send assertions claiming to be from "target-org"
+        auth, config = init_saml_auth(req)  # No organization parameter!
         auth.process_response()
 
         errors = auth.get_errors()
@@ -158,6 +194,13 @@ def saml_acs():
                 session['saml_nameid'] = auth.get_nameid()
                 session['saml_nameid_format'] = auth.get_nameid_format()
                 session['saml_session_index'] = auth.get_session_index()
+
+                # VULNERABILITY: We don't validate that the assertion issuer matches expected org!
+                # We should check: auth.get_last_assertion().get('Issuer') == config.idp_entity_id
+                # But we don't! So any IdP assertion is trusted.
+
+                # Store organization (but this comes from config, not from validating assertion!)
+                session['saml_organization'] = config.organization
 
                 if 'RelayState' in request.form:
                     self_url = OneLogin_Saml2_Utils.get_self_url(req)
@@ -180,10 +223,11 @@ def saml_acs():
 
 
 @app.route('/saml/metadata')
-def saml_metadata():
+@app.route('/saml/metadata/<organization>')
+def saml_metadata(organization=None):
     """SAML metadata endpoint"""
     req = prepare_flask_request(request)
-    auth = init_saml_auth(req)
+    auth, config = init_saml_auth(req, organization)
     settings = auth.get_settings()
     metadata = settings.get_sp_metadata()
     errors = settings.validate_metadata(metadata)
@@ -239,7 +283,8 @@ def saml_logout():
     """SAML logout endpoint - initiates SLO"""
     try:
         req = prepare_flask_request(request)
-        auth = init_saml_auth(req)
+        organization = session.get('saml_organization')
+        auth, config = init_saml_auth(req, organization)
 
         name_id = session.get('saml_nameid')
         session_index = session.get('saml_session_index')
@@ -258,7 +303,7 @@ def saml_logout():
 def saml_sls():
     """SAML Single Logout Service"""
     req = prepare_flask_request(request)
-    auth = init_saml_auth(req)
+    auth, config = init_saml_auth(req)
 
     url = auth.process_slo()
     errors = auth.get_errors()
@@ -277,13 +322,122 @@ def saml_sls():
 @app.route('/saml-config')
 @login_required
 def saml_config_page():
-    """SAML configuration page"""
-    saml_config = SAMLConfig.get_or_create()
-    saml_settings = saml_config.to_settings_dict()
+    """SAML configuration page (legacy - redirects to multi-org page)"""
+    return redirect(url_for('list_saml_orgs'))
 
-    return render_template('saml_config.html',
-                         saml_config={'enabled': saml_config.enabled, 'configured': saml_config.configured},
-                         saml_settings=saml_settings)
+
+@app.route('/saml-orgs')
+@login_required
+def list_saml_orgs():
+    """List all SAML organizations"""
+    organizations = SAMLConfig.query.order_by(SAMLConfig.organization).all()
+    return render_template('saml_orgs.html', organizations=organizations)
+
+
+@app.route('/saml-orgs/add')
+@login_required
+def add_saml_org():
+    """Show form to add new SAML organization"""
+    return render_template('saml_org_edit.html', is_new=True, org=None)
+
+
+@app.route('/saml-orgs/<organization>/edit')
+@login_required
+def edit_saml_org(organization):
+    """Show form to edit existing SAML organization"""
+    org = SAMLConfig.get_by_organization(organization)
+    if not org:
+        return render_template('error.html', error=f'Organization "{organization}" not found'), 404
+    return render_template('saml_org_edit.html', is_new=False, org=org)
+
+
+@app.route('/saml-orgs/create', methods=['POST'])
+@login_required
+def create_saml_org():
+    """Create new SAML organization"""
+    try:
+        data = request.get_json()
+        organization = data.get('organization', '').strip().lower()
+
+        # Validate organization ID
+        if not organization or ' ' in organization:
+            return jsonify({'success': False, 'message': 'Invalid organization ID. Use lowercase with hyphens, no spaces.'}), 400
+
+        # Check if already exists
+        existing = SAMLConfig.get_by_organization(organization)
+        if existing:
+            return jsonify({'success': False, 'message': f'Organization "{organization}" already exists'}), 400
+
+        # Create new organization
+        new_org = SAMLConfig(
+            organization=organization,
+            organization_display_name=data.get('organization_display_name', ''),
+            idp_entity_id=data.get('idp_entity_id', ''),
+            idp_sso_url=data.get('idp_sso_url', ''),
+            idp_slo_url=data.get('idp_slo_url', ''),
+            idp_x509_cert=data.get('idp_cert', ''),
+            enabled=data.get('enabled', False),
+            configured=True
+        )
+
+        db.session.add(new_org)
+        db.session.commit()
+
+        return jsonify({'success': True, 'message': f'Organization "{organization}" created successfully'})
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/saml-orgs/<organization>/update', methods=['POST'])
+@login_required
+def update_saml_org(organization):
+    """Update existing SAML organization"""
+    try:
+        org = SAMLConfig.get_by_organization(organization)
+        if not org:
+            return jsonify({'success': False, 'message': f'Organization "{organization}" not found'}), 404
+
+        data = request.get_json()
+
+        org.organization_display_name = data.get('organization_display_name', '')
+        org.idp_entity_id = data.get('idp_entity_id', '')
+        org.idp_sso_url = data.get('idp_sso_url', '')
+        org.idp_slo_url = data.get('idp_slo_url', '')
+        org.idp_x509_cert = data.get('idp_cert', '')
+        org.enabled = data.get('enabled', False)
+        org.configured = True
+
+        db.session.commit()
+
+        return jsonify({'success': True, 'message': f'Organization "{organization}" updated successfully'})
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/saml-orgs/<organization>/delete', methods=['DELETE'])
+@login_required
+def delete_saml_org(organization):
+    """Delete SAML organization"""
+    try:
+        if organization == 'default':
+            return jsonify({'success': False, 'message': 'Cannot delete default organization'}), 400
+
+        org = SAMLConfig.get_by_organization(organization)
+        if not org:
+            return jsonify({'success': False, 'message': f'Organization "{organization}" not found'}), 404
+
+        db.session.delete(org)
+        db.session.commit()
+
+        return jsonify({'success': True, 'message': f'Organization "{organization}" deleted successfully'})
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 
 @app.route('/saml-config/save', methods=['POST'])
