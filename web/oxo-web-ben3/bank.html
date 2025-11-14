@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>bank.com — Demo</title>
+</head>
+<body>
+  <h1>bank.com</h1>
+
+  <section>
+    <h3>Feedback</h3>
+    <p>Write your message below let us know what you think about our service:</p>
+    <input id="msgInput" placeholder="message" />
+    <button id="btnSend">Post Message</button>
+  </section>
+
+  <hr>
+
+  <section>
+    <h3>Your Feedback</h3>
+    <div id="listenerOutput">No messages yet.</div>
+  </section>
+
+  <script>
+    (function(){
+      const btn = document.getElementById('btnSend');
+      const input = document.getElementById('msgInput');
+      btn.addEventListener('click', () => {
+        window.parent.postMessage(input.value, '*');
+      });
+    })();
+
+    (function(){
+      const out = document.getElementById('listenerOutput');
+
+      window.addEventListener('message', function(event){
+        try {
+          out.innerHTML = event.data;
+        } catch (e) {
+          out.textContent = 'Error rendering message: ' + (e && e.message);
+        }
+      }, false);
+    })();
+  </script>
+</body>
+</html>
