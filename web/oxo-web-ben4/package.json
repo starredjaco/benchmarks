@@ -1,0 +1,16 @@
+{
+  "name": "oxo-web-ben4",
+  "version": "1.0.0",
+  "description": "",
+  "main": "collector.js",
+  "scripts": {
+    "start": "node collector.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "body-parser": "^2.2.0",
+    "express": "^5.1.0"
+  }
+}
