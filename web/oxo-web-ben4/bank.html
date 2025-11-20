@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>SecureBank Portal — Demo</title>
+</head>
+<body>
+  <h1>SecureBank Portal</h1>
+
+  <section>
+    <h3>Transaction Request</h3>
+    <p>Submit a transaction request:</p>
+    <input id="amountInput" placeholder="Amount" type="number" />
+    <input id="recipientInput" placeholder="Recipient" />
+    <button id="btnSubmit">Submit Transaction</button>
+  </section>
+
+  <hr>
+
+  <section>
+    <h3>Transaction Status</h3>
+    <div id="statusOutput">No transactions pending.</div>
+  </section>
+
+  <script>
+    (function(){
+      const btnSubmit = document.getElementById('btnSubmit');
+      const amountInput = document.getElementById('amountInput');
+      const recipientInput = document.getElementById('recipientInput');
+
+      btnSubmit.addEventListener('click', () => {
+        const transaction = {
+          type: 'TRANSACTION_REQUEST',
+          action: 'submit',
+          data: {
+            amount: amountInput.value,
+            recipient: recipientInput.value,
+            timestamp: Date.now()
+          }
+        };
+        window.parent.postMessage(transaction, '*');
+      });
+    })();
+
+    (function(){
+      const statusOutput = document.getElementById('statusOutput');
+
+      window.addEventListener('message', function(event){
+        try {
+          const msg = event.data;
+
+          if (typeof msg !== 'object' || msg === null) {
+            statusOutput.textContent = 'Invalid message format';
+            return;
+          }
+
+          if (msg.type !== 'TRANSACTION_RESPONSE') {
+            statusOutput.textContent = 'Unknown message type';
+            return;
+          }
+
+          if (msg.action === 'update_status') {
+            if (msg.data && msg.data.status) {
+              statusOutput.innerHTML = msg.data.status;
+            } else {
+              statusOutput.textContent = 'Missing status data';
+            }
+          } else if (msg.action === 'display_notification') {
+            if (msg.data && msg.data.message) {
+              statusOutput.innerHTML = msg.data.message;
+            } else {
+              statusOutput.textContent = 'Missing notification message';
+            }
+          } else {
+            statusOutput.textContent = 'Unknown action';
+          }
+        } catch (e) {
+          statusOutput.textContent = 'Error processing message: ' + (e && e.message);
+        }
+      }, false);
+    })();
+  </script>
+</body>
+</html>
