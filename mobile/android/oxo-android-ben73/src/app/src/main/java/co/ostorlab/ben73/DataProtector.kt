@@ -1,34 +1,44 @@
 package co.ostorlab.ben73
 
 import android.util.Base64
+import android.util.Log
 
 object DataProtector {
     
-    private const val SALT = "MySecretKey123"
+    private const val TAG = "DataProtector"
+    
+    init {
+        try {
+            System.loadLibrary("securelib")
+            Log.d(TAG, "Native library loaded successfully")
+            Log.d(TAG, "Version: ${nativeGetVersion()}")
+            Log.d(TAG, "Key hash: ${nativeGetKeyHash()}")
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Failed to load native library", e)
+        }
+    }
+    
+    private external fun nativeTransform(input: ByteArray): ByteArray
+    private external fun nativeGetKeyHash(): String
+    private external fun nativeGetVersion(): String
     
     fun protect(data: String): String {
-        val keyBytes = SALT.toByteArray()
-        val dataBytes = data.toByteArray()
-        val processed = ByteArray(dataBytes.size)
-        
-        for (i in dataBytes.indices) {
-            processed[i] = (dataBytes[i].toInt() xor keyBytes[i % keyBytes.size].toInt()).toByte()
-        }
-        
-        return Base64.encodeToString(processed, Base64.NO_WRAP)
+        val dataBytes = data.toByteArray(Charsets.UTF_8)
+        val transformed = nativeTransform(dataBytes)
+        return Base64.encodeToString(transformed, Base64.NO_WRAP)
     }
     
     fun unprotect(protectedData: String): String {
-        val processed = Base64.decode(protectedData, Base64.NO_WRAP)
-        val keyBytes = SALT.toByteArray()
-        val original = ByteArray(processed.size)
-        
-        for (i in processed.indices) {
-            original[i] = (processed[i].toInt() xor keyBytes[i % keyBytes.size].toInt()).toByte()
-        }
-        
-        return String(original)
+        val decoded = Base64.decode(protectedData, Base64.NO_WRAP)
+        val original = nativeTransform(decoded)
+        return String(original, Charsets.UTF_8)
     }
     
-    fun getSalt(): String = SALT
+    fun getSalt(): String {
+        return "Key stored in native code"
+    }
+    
+    fun getKeyHash(): String = nativeGetKeyHash()
+    
+    fun getVersion(): String = nativeGetVersion()
 }

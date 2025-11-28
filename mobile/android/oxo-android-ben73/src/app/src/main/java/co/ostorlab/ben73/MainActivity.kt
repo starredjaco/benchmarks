@@ -104,7 +104,12 @@ class MainActivity : ComponentActivity() {
     }
     
     private suspend fun syncToCloud(data: List<UserData>): Boolean {
-        return ApiClient.uploadData(data)
+        return ApiClient.uploadData(this, data)
+    }
+    
+    override fun onStart() {
+        super.onStart()
+        co.ostorlab.ben73.sync.SyncScheduler.schedulePeriodicSync(this)
     }
 }
 
