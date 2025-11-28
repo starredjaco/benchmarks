@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<dataExtractionRules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="."/>
+    </cloud-backup>
+</dataExtractionRules>
